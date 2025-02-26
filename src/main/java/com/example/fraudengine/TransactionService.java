@@ -21,6 +21,7 @@ public class TransactionService {
 
     private final String keyScammers = "scammers";
     private final String keyBlackListCountry = "blacklist_country";
+    private final String keyFraudTransactions = "fraud_transactions";
 
 
     public String processTransactions(List<Transaction> transactions) throws SQLException {
@@ -31,7 +32,7 @@ public class TransactionService {
         //Rule 3 - Suppose a transaction is created within the territory of a blacklisted country. You can assume that
         // you already have the blacklisted countries stored in the system database.
         for (Transaction transaction : transactions) {
-            if (!redisTransactionRepository.isMember(keyBlackListCountry, transaction.getCountry())) {
+            if (redisTransactionRepository.isMember(keyBlackListCountry, transaction.getCountry())) {
                 fraudTransactions.add(transaction);
             }
         }
@@ -45,8 +46,30 @@ public class TransactionService {
 
 
         transactionRepository.saveTransactions(transactions);
-        redisTransactionRepository.saveFraud(keyScammers, new HashSet<>());
-        redisTransactionRepository.saveBlacklistCountry(keyBlackListCountry, new HashSet<>());
+
+        Set<String> userIdSet = fraudTransactions.stream()
+                .map(transaction -> transaction.getUserId().toString())
+                .collect(Collectors.toSet());
+
+        Set<String> transIdSet = fraudTransactions.stream()
+                .map(transaction -> transaction.getTransId().toString())
+                .collect(Collectors.toSet());
+
+        // if we have a new countries from the blackList
+        Set<String> newBlacklistCountry = null;
+
+        if (userIdSet.size() != 0) {
+            // key - "scammers"
+            redisTransactionRepository.saveFraud(keyScammers, userIdSet);
+        }
+        if (userIdSet.size() != 0) {
+            // key - "fraud_transactions"
+            redisTransactionRepository.saveFraud(keyFraudTransactions, transIdSet);
+        }
+        if (newBlacklistCountry != null) {
+            // key - "blacklist_country"
+            redisTransactionRepository.saveBlacklistCountry(keyBlackListCountry, newBlacklistCountry);
+        }
 
         return transNumbers;
     }
